@@ -6,13 +6,14 @@ from sqlalchemy.orm import Session
 
 from src.constants.enums import TABLE_DOMAIN_LABELS, DTYPE_LABELS
 from src.models.column_profile import ColumnProfile
+from src.models.model_suggestion import ModelSuggestion
 from src.models.source_table import SourceTable
 from src.utils.errors import AppError, not_found
 from src.utils.timeutil import iso_utc
 from src.services.profiling_service import profile_table
 
 
-def serialize(table: SourceTable, profile_count: int | None = None) -> dict:
+def serialize(table: SourceTable, profile_count: int | None = None, stale_suggestion_count: int | None = None) -> dict:
     return {
         "id": table.id,
         "name": table.name,
@@ -25,6 +26,9 @@ def serialize(table: SourceTable, profile_count: int | None = None) -> dict:
         "sample_count": len(table.sample_rows or []),
         "note": table.note,
         "profile_count": profile_count,
+        "structure_version": table.structure_version or 1,
+        "last_sync_at": iso_utc(table.last_sync_at),
+        "stale_suggestion_count": stale_suggestion_count,
         "scanned_at": iso_utc(table.scanned_at),
         "created_at": iso_utc(table.created_at),
     }
@@ -70,8 +74,18 @@ def list_tables(
             select(ColumnProfile.table_id, func.count()).group_by(ColumnProfile.table_id)
         ).all()
     }
+    stale_counts = {
+        table_id: count
+        for table_id, count in db.execute(
+            select(ModelSuggestion.table_id, func.count())
+            .where(ModelSuggestion.freshness == "stale")
+            .group_by(ModelSuggestion.table_id)
+        ).all()
+    }
     return {
-        "items": [serialize(row, counts.get(row.id, 0)) for row in rows],
+        "items": [
+            serialize(row, counts.get(row.id, 0), stale_counts.get(row.id, 0)) for row in rows
+        ],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -93,6 +107,9 @@ def detail(db: Session, table_id: int) -> dict:
     payload = serialize(table, len(profiles))
     payload["profiles"] = [serialize_profile(profile) for profile in profiles]
     payload["sample_preview"] = (table.sample_rows or [])[:3]
+    payload["structure_snapshot"] = table.structure_snapshot or [
+        {"column": p.column, "dtype": p.dtype} for p in profiles
+    ]
     return payload
 
 
@@ -110,6 +127,8 @@ def create_table(db: Session, payload: dict) -> SourceTable:
         row_count=int(payload.get("row_count") or len(sample_rows)),
         field_count=len(profiles),
         sample_rows=sample_rows,
+        structure_snapshot=[{"column": p["column"], "dtype": p["dtype"]} for p in profiles],
+        structure_version=1,
         note=payload.get("note"),
     )
     db.add(table)

@@ -24,17 +24,19 @@ PERMISSIONS: dict[str, set[str]] = {
         "profile:read", "relation:read",
         "run:read", "run:create",
         "suggestion:read", "suggestion:adopt", "suggestion:review",
+        "sync:read", "sync:write",
         "export:read", "audit:read", "overview:read",
     },
     Role.ANALYST.value: {
         "table:read", "profile:read", "relation:read",
         "run:read", "run:create",
         "suggestion:read", "suggestion:review",
+        "sync:read",
         "export:read", "overview:read",
     },
     Role.VIEWER.value: {
         "table:read", "profile:read", "relation:read", "run:read",
-        "suggestion:read", "overview:read",
+        "suggestion:read", "sync:read", "overview:read",
     },
 }
 
@@ -42,6 +44,7 @@ TABLE_WRITE_ROLES = (Role.ADMIN.value,)
 RUN_CREATE_ROLES = (Role.ADMIN.value, Role.ANALYST.value)
 SUGGESTION_REVIEW_ROLES = (Role.ADMIN.value, Role.ANALYST.value)
 SUGGESTION_ADOPT_ROLES = (Role.ADMIN.value,)
+SYNC_WRITE_ROLES = (Role.ADMIN.value,)
 EXPORT_ROLES = (Role.ADMIN.value,)
 EXPORT_CSV_ROLES = (Role.ADMIN.value, Role.ANALYST.value)
 AUDIT_ROLES = (Role.ADMIN.value,)

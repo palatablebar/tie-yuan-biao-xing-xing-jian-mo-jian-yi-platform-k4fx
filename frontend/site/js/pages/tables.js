@@ -101,6 +101,7 @@ export const tablesPage = {
           <h2>贴源表与剖析</h2>
           <div style="display:flex;gap:8px;align-items:center">
             <span class="meta">${data.total} 张 · 每列最多抽样 200 行</span>
+            ${can(ctx.user.role, 'sync:write') ? '<a class="btn sm ghost" href="#/sync" id="go-sync">结构同步</a>' : ''}
             ${can(ctx.user.role, 'table:write') ? '<button class="btn sm accent" id="new-table">登记贴源表</button>' : ''}
           </div>
         </div>
@@ -118,12 +119,25 @@ export const tablesPage = {
             { key: 'domain_label', label: '主题域', render: (row) => `<span class="badge info">${esc(row.domain_label)}</span>` },
             { key: 'row_count', label: '行数', className: 'num', render: (row) => fmtNumber(row.row_count) },
             { key: 'field_count', label: '字段', className: 'num' },
-            { key: 'profile_count', label: '剖析列', className: 'num' },
+            {
+              key: 'structure_version',
+              label: '结构版本',
+              className: 'num',
+              render: (row) => `<span class="mono">v${esc(row.structure_version ?? 1)}</span><div class="mono muted">${row.last_sync_at ? fmtTime(row.last_sync_at) : '未同步'}</div>`,
+            },
+            {
+              key: 'stale_suggestion_count',
+              label: '过期建议',
+              className: 'num',
+              render: (row) => (row.stale_suggestion_count
+                ? `<span class="badge danger">${esc(row.stale_suggestion_count)} 待重建</span>`
+                : '<span class="muted">—</span>'),
+            },
             { key: 'scanned_at', label: '最近剖析', render: (row) => fmtTime(row.scanned_at) },
           ],
         })}
       </section>
-      <p class="mono muted">点击任意一行查看逐列剖析；唯一率 = 去重值 / 抽样行数，空值率 = 空值行 / 抽样行。</p>`;
+      <p class="mono muted">点击任意一行查看逐列剖析；结构版本随每次成功的结构同步递增，字段变化后相关建议会显示为待重建。</p>`;
 
     const filters = view.querySelector('#table-filters');
     filters?.addEventListener('change', () => {

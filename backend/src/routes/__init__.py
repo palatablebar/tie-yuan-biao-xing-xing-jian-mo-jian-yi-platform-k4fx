@@ -11,12 +11,14 @@ from src.routes.overview import router as overview_router
 from src.routes.profiles import router as profiles_router
 from src.routes.relations import router as relations_router
 from src.routes.source_tables import router as source_tables_router
+from src.routes.structure_sync import router as structure_sync_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(overview_router)
 api_router.include_router(source_tables_router)
+api_router.include_router(structure_sync_router)
 api_router.include_router(profiles_router)
 api_router.include_router(relations_router)
 api_router.include_router(model_runs_router)

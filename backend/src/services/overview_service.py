@@ -22,6 +22,7 @@ from src.models.model_run import ModelRun
 from src.models.model_suggestion import ModelSuggestion
 from src.models.relation import Relation
 from src.models.source_table import SourceTable
+from src.models.structure_sync import StructureSync
 from src.services.model_run_service import serialize as serialize_run
 from src.utils.timeutil import local_now, utcnow
 
@@ -64,6 +65,28 @@ def overview(db: Session) -> dict:
         )
         or 0
     )
+    # 依据过期建议与失效关系：字段变化后立即计入，导出 DDL 时只要有 stale 就拒绝
+    stale_suggestion_total = (
+        db.scalar(
+            select(func.count()).select_from(ModelSuggestion).where(ModelSuggestion.freshness == "stale")
+        )
+        or 0
+    )
+    stale_relation_total = (
+        db.scalar(select(func.count()).select_from(Relation).where(Relation.freshness == "stale")) or 0
+    )
+    pending_sync_total = (
+        db.scalar(
+            select(func.count()).select_from(StructureSync).where(StructureSync.status == "success")
+        )
+        or 0
+    )
+    failed_sync_total = (
+        db.scalar(
+            select(func.count()).select_from(StructureSync).where(StructureSync.status == "failed")
+        )
+        or 0
+    )
 
     domain_rows = db.execute(
         select(SourceTable.domain, func.count()).group_by(SourceTable.domain)
@@ -98,6 +121,10 @@ def overview(db: Session) -> dict:
         "suggestions_total": suggestions_total,
         "pending_total": pending_total,
         "adopted_total": adopted_total,
+        "stale_suggestion_total": stale_suggestion_total,
+        "stale_relation_total": stale_relation_total,
+        "pending_sync_total": pending_sync_total,
+        "failed_sync_total": failed_sync_total,
         "fact_total": int(metrics.get("fact_tables") or 0),
         "dim_total": int(metrics.get("dim_tables") or 0),
         "secondary_dim_total": int(metrics.get("secondary_dims") or 0),

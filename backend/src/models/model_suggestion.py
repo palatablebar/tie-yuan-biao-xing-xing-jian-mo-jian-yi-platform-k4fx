@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models import Base
@@ -25,9 +25,16 @@ class ModelSuggestion(Base):
     attributes: Mapped[list] = mapped_column(JSON, default=list)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # 与当前贴源结构的新鲜度（与采纳状态正交）：字段变化立即置 stale，导出拒绝 stale
+    freshness: Mapped[str] = mapped_column(String(8), default="current", index=True)
+    stale_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    structure_sync_id: Mapped[int | None] = mapped_column(
+        ForeignKey("structure_syncs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     ddl: Mapped[str] = mapped_column(Text, default="")
     reason: Mapped[str] = mapped_column(Text, default="")
     adopted_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     adopted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    superseded_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

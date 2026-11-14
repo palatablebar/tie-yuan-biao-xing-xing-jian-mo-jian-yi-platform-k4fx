@@ -57,7 +57,20 @@ async function request(path, { method = 'GET', body, query } = {}) {
 async function download(path, filename) {
   const token = session.token();
   const response = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-  if (!response.ok) throw new ApiError('导出失败', 'EXPORT_FAILED', response.status, null);
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    throw new ApiError(
+      payload?.message || '导出失败',
+      payload?.code || 'EXPORT_FAILED',
+      response.status,
+      payload?.detail ?? null,
+    );
+  }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

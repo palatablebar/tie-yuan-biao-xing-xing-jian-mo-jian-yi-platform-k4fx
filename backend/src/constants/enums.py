@@ -125,10 +125,67 @@ class TriggerKind(StrEnum):
     MANUAL = "manual"
     SCHEDULE = "schedule"
     SEED = "seed"
+    SYNC = "sync"
 
 
 TRIGGER_LABELS: dict[str, str] = {
     TriggerKind.MANUAL.value: "手动",
     TriggerKind.SCHEDULE.value: "定时",
     TriggerKind.SEED.value: "初始化",
+    TriggerKind.SYNC.value: "结构同步",
+}
+
+
+class ChangeKind(StrEnum):
+    """结构同步的字段迁移规则（按字段级隔离影响范围）。"""
+
+    ADDED = "added"          # 新增列：不影响既有建议的导出资格
+    REMOVED = "removed"      # 删除列：引用它的关系 / 建议立即失效
+    RENAMED = "renamed"      # 改名（迁移规则显式声明 old_name → name）：按删除+新增隔离
+    TYPE_CHANGED = "type_changed"  # 类型变更：引用它的建议立即失效
+
+
+CHANGE_KIND_LABELS: dict[str, str] = {
+    ChangeKind.ADDED.value: "新增",
+    ChangeKind.REMOVED.value: "删除",
+    ChangeKind.RENAMED.value: "改名",
+    ChangeKind.TYPE_CHANGED.value: "类型变更",
+}
+
+CHANGE_KIND_ORDER: list[str] = [item.value for item in ChangeKind]
+
+# 会让依据失效的迁移规则（新增列不影响既有结论）
+INVALIDATING_CHANGE_KINDS = frozenset(
+    {ChangeKind.REMOVED.value, ChangeKind.RENAMED.value, ChangeKind.TYPE_CHANGED.value}
+)
+
+
+class SyncStatus(StrEnum):
+    """结构同步单状态：失败留痕但不生效，成功后等待管理员确认重建。"""
+
+    SUCCESS = "success"
+    FAILED = "failed"
+    REBUILT = "rebuilt"  # 管理员已确认并按新结构重新建模
+
+
+SYNC_STATUS_LABELS: dict[str, str] = {
+    SyncStatus.SUCCESS.value: "已同步·待确认",
+    SyncStatus.FAILED.value: "同步失败",
+    SyncStatus.REBUILT.value: "已重建",
+}
+
+
+class SuggestionFreshness(StrEnum):
+    """建议与当前贴源结构的新鲜度（与人工采纳状态正交）。
+
+    current 可导出；stale 依据的字段已变化，导出资格立即失效，需按新结构重建后重新采纳。
+    """
+
+    CURRENT = "current"
+    STALE = "stale"
+
+
+SUGGESTION_FRESHNESS_LABELS: dict[str, str] = {
+    SuggestionFreshness.CURRENT.value: "依据有效",
+    SuggestionFreshness.STALE.value: "依据过期",
 }

@@ -27,9 +27,10 @@
 
 1. **贴源表与剖析**（`#/tables`）：24 张表按主题域筛选；抽屉里逐列看唯一率、空值率、基数与样本值（服务端剖析结果）。
 2. **关系图**（`#/relations`）：SVG 主视觉，18 条边按「二级维 → 主维 → 事实」三带排布；点击节点高亮它的边；下方包含依赖清单可看包含度/置信度。
-3. **建模建议**（`#/suggestions`）：9 条建议（4 事实 + 5 主维），含粒度、关联边、置信度、DDL；管理员采纳、专员驳回，状态落库且不被重跑覆盖。
-4. **总览**（`#/overview`）：表/字段/关系/建议计数、关系类型与建议状态分布、最近一次剖析指标与日志、7 日趋势。
-5. **导出与审计**：管理员导出 `ddl.sql`（9 段）、专员导出关系 CSV；登录/登记/剖析/采纳/驳回/导出全部进 `audit_logs`。
+3. **建模建议**（`#/suggestions`）：9 条建议（4 事实 + 5 主维），含粒度、关联边、置信度、DDL；管理员采纳、专员驳回，状态落库且不被重跑覆盖。每条建议带「依据新鲜度」：字段变化立即置 `stale`（导出资格锁定），重建并重新采纳后恢复 `current`。
+4. **结构同步**（`#/sync`，管理员发起）：上游贴源表字段改名 / 删列 / 类型变更 / 新增列时，提交新结构 + 迁移规则（可声明改名 `old_name → column`）。每次同步都留痕（变化前后字段快照、迁移规则、受影响关系与建议）；按字段级隔离影响——只有引用变化字段的关系 / 建议立即失效，无关建议保持可用。失败的同步在 SAVEPOINT 内回滚，旧版结构完整保留，仅落一条 `failed` 记录。管理员确认后按新结构重新建模（受影响建议需重新采纳，无关建议沿用原采纳结论），并可在抽屉查看变化前后字段与受影响范围。
+5. **总览**（`#/overview`）：表/字段/关系/建议计数、关系类型与建议状态分布、最近一次剖析指标与日志、7 日趋势，以及待确认同步 / 依据过期建议 / 同步失败的红色提醒。
+6. **导出与审计**：管理员导出 `ddl.sql`（9 段）、专员导出关系 CSV；登录/登记/剖析/采纳/驳回/结构同步/确认重建/导出全部进 `audit_logs`。**DDL 导出硬卡口**：最新一次运行里只要存在 `freshness=stale` 的建议即返回 `409 EXPORT_STALE`，拒绝任何含旧列的 DDL 流出，直到确认重建并重新采纳。
 
 ## 4. 快速启动
 
@@ -107,6 +108,15 @@ docker-compose.yml  .env  README.md
 - DDL：事实表 = 代理键 + 维度外键 + 度量列 + `PRIMARY KEY` + 每条关系一条 `FOREIGN KEY`；维度表 = 代理键 + 属性列 + 上层维外键。
 - 导出：`GET /api/exports/ddl.sql` 按「事实优先 + 目标表名」排序，固定 9 段，段头带序号/角色/置信度/状态。
 
+### 算法 C｜结构同步与影响隔离（`backend/src/services/sync_engine.py` + `structure_sync_service.py`）
+
+- 结构快照 = `[{column, dtype}, ...]`，列名为字段自然键；每次成功同步把 `source_tables.structure_version` +1 并写入 `structure_syncs`（变化前后快照 + 迁移规则 + 受影响关系/建议 ID），可逐次追溯。
+- 迁移规则 diff：`renamed` 由请求显式声明 `old_name → column`（两端列必须真实存在）；未声明改名时按 `removed + added` 处理；同名列类型变化记 `type_changed`；新结构多出的列记 `added`。
+- 影响隔离（字段级）：只有 `removed / renamed / type_changed` 会让依据失效（`INVALIDATING_CHANGE_KINDS`），`added` 不影响任何既有结论。关系的任一端列命中失效旧列名即置 `stale`；建议引用的粒度外键 / 度量 / 属性 / 关联边列命中（含跨表 join 传导）才置 `stale`，其余建议保持 `current`。
+- 失败保留旧版：结构改动在 SAVEPOINT（`begin_nested`）内执行，任何异常都回滚到同步前，旧结构 / 关系 / 建议原样保留，仅落一条 `status=failed` 记录与审计。
+- 确认重建（`rebuild`）：重新剖析同步表 + 全局关系发现 + 重建星型建议，生成 `trigger=sync` 的新运行；受影响表的新建议回到 `pending` 需重新采纳，无关表建议沿用原采纳状态，旧建议以 `superseded_by_id` 留档。
+- 导出硬卡口：`GET /api/exports/ddl.sql` 发现最新运行存在任何 `freshness=stale` 建议即返回 `409 EXPORT_STALE`（附过期目标表与同步 ID），从根上拒绝含旧列的 DDL；重建后全部 `current` 才放行。
+
 ### 关系图数据
 
 `GET /api/relations/graph` 返回 24 个节点（含算法现算的 fact/dim/none 角色与度数）与 18 条边；角色只由 `classify_tables()` 计算，不落库、不由前端推断。
@@ -122,6 +132,10 @@ docker-compose.yml  .env  README.md
 | 建议角色 `fact/dim` | `backend/src/constants/enums.py`（`SuggestionRole`） | `frontend/site/js/config.js`（`ENUMS.suggestionRole`） |
 | 建议状态 `pending/adopted/dismissed` | `backend/src/constants/enums.py`（`SuggestionStatus`） | `frontend/site/js/config.js`（`ENUMS.suggestionStatus`） |
 | 运行状态 `queued/running/success/partial/failed` | `backend/src/constants/enums.py`（`ModelRunStatus`） | `frontend/site/js/config.js`（`ENUMS.runStatus`） |
+| 触发方式 `manual/schedule/seed/sync` | `backend/src/constants/enums.py`（`TriggerKind`） | `frontend/site/js/config.js`（`ENUMS.trigger`） |
+| 字段迁移规则 `added/removed/renamed/type_changed` | `backend/src/constants/enums.py`（`ChangeKind`） | `frontend/site/js/config.js`（`ENUMS.changeKind`） |
+| 同步状态 `success/failed/rebuilt` | `backend/src/constants/enums.py`（`SyncStatus`） | `frontend/site/js/config.js`（`ENUMS.syncStatus`） |
+| 建议依据新鲜度 `current/stale` | `backend/src/constants/enums.py`（`SuggestionFreshness`） | `frontend/site/js/config.js`（`ENUMS.freshness`） |
 
 ## 11. API
 
@@ -134,11 +148,14 @@ docker-compose.yml  .env  README.md
 | GET | `/api/profiles?table_id=` | 三角色 |
 | GET | `/api/relations`、`/api/relations/graph` | 三角色 |
 | GET / POST | `/api/model-runs` | 读：三角色；写：admin/analyst |
-| GET | `/api/model-suggestions`、`/{id}` | 三角色 |
-| POST | `/api/model-suggestions/{id}/adopt` | admin |
+| GET | `/api/model-suggestions`、`/{id}` | 三角色（含 `freshness` 依据新鲜度与 `exportable` 导出资格） |
+| POST | `/api/model-suggestions/{id}/adopt` | admin（`stale` 建议返回 409，需先重建） |
 | POST | `/api/model-suggestions/{id}/dismiss` | admin/analyst |
-| GET | `/api/exports/ddl.sql` | admin |
-| GET | `/api/exports/relations.csv`、`/suggestions.csv` | admin/analyst |
+| GET | `/api/structure-syncs`、`/{id}` | 三角色（每次同步的变化前后字段、迁移规则、受影响范围） |
+| POST | `/api/source-tables/{id}/structure-sync` | admin（字段改名/删列/类型变更/新增；失败回滚旧版并留痕） |
+| POST | `/api/structure-syncs/{id}/rebuild` | admin（确认后按新结构重新建模） |
+| GET | `/api/exports/ddl.sql` | admin（存在 `stale` 建议时返回 `409 EXPORT_STALE`） |
+| GET | `/api/exports/relations.csv`、`/suggestions.csv` | admin/analyst（含「依据状态 / 可导出」列） |
 | GET | `/api/audit` | admin |
 
 ## 12. Docker 说明

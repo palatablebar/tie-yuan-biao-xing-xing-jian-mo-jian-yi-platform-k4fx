@@ -13,6 +13,7 @@ from src.models.column_profile import ColumnProfile  # noqa: E402
 from src.models.relation import Relation  # noqa: E402
 from src.models.model_run import ModelRun  # noqa: E402
 from src.models.model_suggestion import ModelSuggestion  # noqa: E402
+from src.models.structure_sync import StructureSync  # noqa: E402
 
 __all__ = [
     "Base",
@@ -23,4 +24,5 @@ __all__ = [
     "Relation",
     "ModelRun",
     "ModelSuggestion",
+    "StructureSync",
 ]

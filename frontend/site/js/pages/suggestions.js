@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { ENUMS, can, roleTone, statusTone } from '../config.js';
+import { ENUMS, can, roleTone, statusTone, freshnessTone } from '../config.js';
 import { confidenceBar, drawer, errorBox, errorMessage, esc, field, kv, table, toast } from '../ui.js';
 
 const state = { role: '', status: '', q: '' };
@@ -21,18 +21,22 @@ function joinsTable(joins) {
 }
 
 function openSuggestion(view, ctx, item) {
-  const adoptable = can(ctx.user.role, 'suggestion:adopt') && item.status === 'pending';
+  const isStale = item.freshness === 'stale';
+  const adoptable = can(ctx.user.role, 'suggestion:adopt') && item.status === 'pending' && !isStale;
   const dismissable = can(ctx.user.role, 'suggestion:review') && item.status !== 'adopted';
   const { root, close } = drawer({
     title: `${item.target_name}`,
     subtitle: `${item.table_name} → ${item.role_label} · ${item.status_label}`,
-    body: `${kv([
+    body: `${isStale ? `<div class="error-box" style="margin-bottom:12px"><span>依据已过期：${esc(item.stale_reason || '贴源字段已变化，需在「结构同步」确认重建后重新采纳')}</span></div>` : ''}
+    ${kv([
       ['目标表', `<span class="mono">${esc(item.target_name)}</span>`],
       ['源表', `<span class="mono">${esc(item.table_name)}</span>`],
       ['角色', `<span class="badge ${roleTone(item.role)}">${esc(item.role_label)}</span>`],
       ['粒度', esc(item.grain)],
       ['置信度', confidenceBar(item.confidence)],
       ['状态', `<span class="badge ${statusTone(item.status)}">${esc(item.status_label)}</span>`],
+      ['依据新鲜度', `<span class="badge ${freshnessTone(item.freshness)}">${esc(item.freshness_label)}</span>`],
+      ['导出资格', item.exportable ? '<span class="badge ok">可导出</span>' : '<span class="badge danger">已锁定</span>'],
       ['度量列', `<span class="mono">${esc((item.measures || []).join(' / ') || '—')}</span>`],
       ['属性列', `<span class="mono">${esc((item.attributes || []).slice(0, 8).join(' / ') || '—')}</span>`],
       ['采纳人', esc(item.adopted_by || '—')],
@@ -40,12 +44,14 @@ function openSuggestion(view, ctx, item) {
     ])}
     <h3>关联边</h3>
     ${joinsTable(item.joins)}
-    <h3>CREATE TABLE DDL（后端生成）</h3>
+    <h3>CREATE TABLE DDL（后端生成）${isStale ? '· 含旧列，禁止导出' : ''}</h3>
     <pre class="code">${esc(item.ddl)}</pre>`,
-    footer: `${adoptable ? '<button class="btn accent" id="adopt-btn">采纳这条建议</button>' : ''}
+    footer: `${isStale ? '<a class="btn accent" href="#/sync" id="goto-sync">去结构同步确认重建</a>' : ''}
+      ${adoptable ? '<button class="btn accent" id="adopt-btn">采纳这条建议</button>' : ''}
       ${dismissable ? '<button class="btn ghost" id="dismiss-btn" style="margin-left:8px">驳回</button>' : ''}
-      ${!adoptable && !dismissable ? '<span class="mono muted">当前角色无采纳/驳回权限，或该建议已定稿。</span>' : ''}`,
+      ${!adoptable && !dismissable && !isStale ? '<span class="mono muted">当前角色无采纳/驳回权限，或该建议已定稿。</span>' : ''}`,
   });
+  root.querySelector('#goto-sync')?.addEventListener('click', () => close());
   root.querySelector('#adopt-btn')?.addEventListener('click', async () => {
     try {
       await api.post(`/api/model-suggestions/${item.id}/adopt`, {});
@@ -82,6 +88,7 @@ export const suggestionsPage = {
       view.querySelector('#retry-btn')?.addEventListener('click', () => suggestionsPage.render(view, ctx));
       return;
     }
+    const staleTotal = data.items.filter((item) => item.freshness === 'stale').length;
     view.innerHTML = `
       <section class="panel">
         <div class="panel-head">
@@ -89,16 +96,17 @@ export const suggestionsPage = {
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span class="meta">${data.total} 条 · 4 事实 / 5 主维 · 7 张二级维不单独建议</span>
             ${can(ctx.user.role, 'run:create') ? '<button class="btn sm ghost" id="rerun">重新剖析</button>' : ''}
-            ${can(ctx.user.role, 'export:read') ? '<button class="btn sm accent" id="export-ddl" data-testid="export-ddl">导出 DDL</button>' : ''}
+            ${can(ctx.user.role, 'export:read') ? `<button class="btn sm accent" id="export-ddl" data-testid="export-ddl" ${staleTotal ? 'title="存在依据过期建议，导出已锁定"' : ''}>${staleTotal ? `导出已锁定（${staleTotal}）` : '导出 DDL'}</button>` : ''}
           </div>
         </div>
+        ${staleTotal ? `<div class="error-box" style="margin:12px 16px 0"><span>有 ${staleTotal} 条建议依据的贴源字段已变化，导出资格已失效；请到「结构同步」确认重建并重新采纳。</span><a class="btn sm accent" href="#/sync" style="margin-left:8px">去处理</a></div>` : ''}
         <div class="panel-body">
           <div class="filter-bar" id="suggestion-filters">
             ${field({ label: '搜索', name: 'q', value: state.q, placeholder: '目标表 / 粒度' })}
             ${field({ label: '角色', name: 'role', value: state.role, options: [{ value: '', label: '全部' }, ...Object.entries(ENUMS.suggestionRole).map(([value, label]) => ({ value, label }))] })}
             ${field({ label: '状态', name: 'status', value: state.status, options: [{ value: '', label: '全部' }, ...Object.entries(ENUMS.suggestionStatus).map(([value, label]) => ({ value, label }))] })}
             <div class="spacer"></div>
-            <span class="mono muted">待采纳 ${overview.pending_total} · 已采纳 ${overview.adopted_total}</span>
+            <span class="mono muted">待采纳 ${overview.pending_total} · 已采纳 ${overview.adopted_total}${overview.stale_suggestion_total ? ` · 依据过期 ${overview.stale_suggestion_total}` : ''}</span>
           </div>
         </div>
         ${table({
@@ -111,11 +119,12 @@ export const suggestionsPage = {
             { key: 'joins', label: '关联', className: 'num', render: (row) => (row.joins || []).length },
             { key: 'confidence', label: '置信度', render: (row) => confidenceBar(row.confidence) },
             { key: 'status', label: '状态', render: (row) => `<span class="badge ${statusTone(row.status)}">${esc(row.status_label)}</span>` },
+            { key: 'freshness', label: '依据', render: (row) => `<span class="badge ${freshnessTone(row.freshness)}">${esc(row.freshness_label)}</span>` },
             { key: 'adopted_by', label: '采纳人', render: (row) => `<span class="mono muted">${esc(row.adopted_by || '—')}</span>` },
           ],
         })}
       </section>
-      <p class="mono muted">建议与 DDL 全部由后端算法生成并落库；采纳只改状态，不改算法结论。导出 SQL 共 9 段，每段一条建议。</p>`;
+      <p class="mono muted">建议与 DDL 全部由后端算法生成并落库；字段变化立即锁定过期建议的导出资格，重建并重新采纳后恢复。导出 SQL 每段一条建议。</p>`;
 
     const filters = view.querySelector('#suggestion-filters');
     filters?.addEventListener('change', () => {
@@ -139,9 +148,13 @@ export const suggestionsPage = {
     view.querySelector('#export-ddl')?.addEventListener('click', async () => {
       try {
         await api.download('/api/exports/ddl.sql', 'starmodel-ddl.sql');
-        toast('已开始下载 DDL（9 段）');
+        toast('已开始下载 DDL');
       } catch (err) {
-        toast(errorMessage(err), 'err');
+        if (err.code === 'EXPORT_STALE') {
+          toast('导出被拒绝：存在依据过期的建议，请先到结构同步确认重建', 'err');
+        } else {
+          toast(errorMessage(err), 'err');
+        }
       }
     });
     view.querySelector('#rerun')?.addEventListener('click', async (event) => {

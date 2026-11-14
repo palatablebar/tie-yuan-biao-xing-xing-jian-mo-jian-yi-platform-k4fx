@@ -44,6 +44,10 @@ def ensure_users(db) -> int:
 
 def ensure_tables(db) -> int:
     for spec in TABLES:
+        snapshot = [
+            {"column": key, "dtype": ""}
+            for key in (spec["sample_rows"][0].keys() if spec["sample_rows"] else [])
+        ]
         table = db.scalar(select(SourceTable).where(SourceTable.name == spec["name"]))
         if table is None:
             table = SourceTable(
@@ -54,6 +58,8 @@ def ensure_tables(db) -> int:
                 row_count=spec["row_count"],
                 field_count=len(spec["sample_rows"][0]) if spec["sample_rows"] else 0,
                 sample_rows=spec["sample_rows"],
+                structure_snapshot=snapshot,
+                structure_version=1,
                 note=spec["note"],
             )
             db.add(table)
@@ -64,6 +70,9 @@ def ensure_tables(db) -> int:
             table.row_count = spec["row_count"]
             table.note = spec["note"]
             table.field_count = len(spec["sample_rows"][0]) if spec["sample_rows"] else table.field_count
+            # 仅在没有发生过显式结构同步时用 seed 结构补齐快照，避免覆盖用户的同步版本
+            if not table.structure_snapshot:
+                table.structure_snapshot = snapshot
     db.flush()
     return db.scalar(select(func.count()).select_from(SourceTable)) or 0
 

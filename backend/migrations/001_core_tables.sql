@@ -19,6 +19,9 @@ CREATE TABLE source_tables (
     row_count       INTEGER      NOT NULL DEFAULT 0,
     field_count     INTEGER      NOT NULL DEFAULT 0,
     sample_rows     JSON,
+    structure_snapshot JSON      NOT NULL DEFAULT '[]',
+    structure_version INTEGER    NOT NULL DEFAULT 1,
+    last_sync_at    TIMESTAMP,
     note            TEXT,
     scanned_at      TIMESTAMP,
     created_at      TIMESTAMP    NOT NULL,
@@ -40,6 +43,24 @@ CREATE TABLE column_profiles (
     CONSTRAINT uq_profiles_table_column UNIQUE (table_id, column_name)
 );
 
+-- 结构同步留痕：每次同步一条，含变化前后快照、字段迁移规则、受影响关系/建议
+CREATE TABLE structure_syncs (
+    id                      SERIAL PRIMARY KEY,
+    table_id                INTEGER      NOT NULL REFERENCES source_tables(id) ON DELETE CASCADE,
+    status                  VARCHAR(16)  NOT NULL DEFAULT 'success',
+    operator_email          VARCHAR(160) NOT NULL,
+    before_snapshot         JSON         NOT NULL DEFAULT '[]',
+    after_snapshot          JSON         NOT NULL DEFAULT '[]',
+    changes                 JSON         NOT NULL DEFAULT '[]',
+    affected_relation_ids   JSON         NOT NULL DEFAULT '[]',
+    affected_suggestion_ids JSON         NOT NULL DEFAULT '[]',
+    rebuilt_run_id          INTEGER,
+    error_message           TEXT,
+    confirmed_by            VARCHAR(160),
+    confirmed_at            TIMESTAMP,
+    created_at              TIMESTAMP    NOT NULL
+);
+
 CREATE TABLE relations (
     id              SERIAL PRIMARY KEY,
     left_table_id   INTEGER      NOT NULL REFERENCES source_tables(id) ON DELETE CASCADE,
@@ -50,6 +71,8 @@ CREATE TABLE relations (
     confidence      DOUBLE PRECISION NOT NULL DEFAULT 0,
     kind            VARCHAR(12)  NOT NULL,
     sample_size     INTEGER      NOT NULL DEFAULT 0,
+    freshness       VARCHAR(8)   NOT NULL DEFAULT 'current',
+    structure_sync_id INTEGER    REFERENCES structure_syncs(id) ON DELETE SET NULL,
     created_at      TIMESTAMP    NOT NULL,
     CONSTRAINT uq_relations_edge UNIQUE (left_table_id, left_column, right_table_id, right_column)
 );
@@ -83,6 +106,10 @@ CREATE TABLE model_suggestions (
     attributes      JSON,
     confidence      DOUBLE PRECISION NOT NULL DEFAULT 0,
     status          VARCHAR(16)  NOT NULL DEFAULT 'pending',
+    freshness       VARCHAR(8)   NOT NULL DEFAULT 'current',
+    stale_reason    TEXT,
+    structure_sync_id INTEGER    REFERENCES structure_syncs(id) ON DELETE SET NULL,
+    superseded_by_id INTEGER,
     ddl             TEXT,
     reason          TEXT,
     adopted_by      VARCHAR(160),

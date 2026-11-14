@@ -62,6 +62,7 @@ def list_relations(db: Session, *, kind: str | None = None, limit: int = 60, off
                 "confidence": row.confidence,
                 "kind": row.kind,
                 "kind_label": RELATION_KIND_LABELS.get(row.kind, row.kind),
+                "freshness": row.freshness,
                 "sample_size": row.sample_size,
             }
         )
@@ -83,6 +84,7 @@ def graph(db: Session) -> dict:
             "containment": row.containment,
             "confidence": row.confidence,
             "kind": row.kind,
+            "freshness": row.freshness,
         }
         for row in relations
     ]
@@ -121,6 +123,7 @@ def graph(db: Session) -> dict:
         "nodes": nodes,
         "edges": edges,
         "edge_total": len(edges),
+        "stale_edge_total": sum(1 for edge in edges if edge.get("freshness") == "stale"),
         "node_total": len(nodes),
         "fact_total": sum(1 for node in nodes if node["role"] == ROLE_FACT),
         "dim_total": sum(1 for node in nodes if node["role"] == ROLE_DIM),

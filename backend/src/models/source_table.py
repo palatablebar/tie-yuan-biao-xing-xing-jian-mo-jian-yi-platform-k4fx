@@ -21,6 +21,10 @@ class SourceTable(Base):
     row_count: Mapped[int] = mapped_column(Integer, default=0)
     field_count: Mapped[int] = mapped_column(Integer, default=0)
     sample_rows: Mapped[list] = mapped_column(JSON, default=list)
+    # 最近一次结构快照（列名+类型），结构同步据此 diff；每次成功同步 +1
+    structure_snapshot: Mapped[list] = mapped_column(JSON, default=list)
+    structure_version: Mapped[int] = mapped_column(Integer, default=1)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     scanned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

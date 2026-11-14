@@ -62,29 +62,49 @@ def _persist_profiles(db: Session, table_id: int, profiles: list[dict]) -> None:
 def _persist_relations(db: Session, relations: list[dict]) -> None:
     db.execute(delete(Relation))
     for relation in relations:
-        db.add(Relation(**relation))
+        db.add(Relation(freshness="current", **relation))
     db.flush()
 
 
-def _persist_suggestions(db: Session, run_id: int, suggestions: list[dict]) -> None:
+def _previous_run_id(db: Session, current_run_id: int) -> int | None:
+    return db.scalar(
+        select(func.max(ModelRun.id)).where(ModelRun.id != current_run_id)
+    )
+
+
+def _persist_suggestions(
+    db: Session, run_id: int, suggestions: list[dict], previous_run_id: int | None = None
+) -> None:
     db.execute(delete(ModelSuggestion).where(ModelSuggestion.run_id == run_id))
+    previous_by_table: dict[int, ModelSuggestion] = {}
+    if previous_run_id:
+        for old in db.scalars(
+            select(ModelSuggestion).where(ModelSuggestion.run_id == previous_run_id)
+        ).all():
+            previous_by_table[old.table_id] = old
     for suggestion in suggestions:
-        db.add(
-            ModelSuggestion(
-                run_id=run_id,
-                table_id=suggestion["table_id"],
-                target_name=suggestion["target_name"],
-                role=suggestion["role"],
-                grain=suggestion["grain"],
-                joins=suggestion["joins"],
-                measures=suggestion["measures"],
-                attributes=suggestion["attributes"],
-                confidence=suggestion["confidence"],
-                status="pending",
-                ddl=suggestion["ddl"],
-                reason=suggestion["reason"],
-            )
+        previous = previous_by_table.get(suggestion["table_id"])
+        entity = ModelSuggestion(
+            run_id=run_id,
+            table_id=suggestion["table_id"],
+            target_name=suggestion["target_name"],
+            role=suggestion["role"],
+            grain=suggestion["grain"],
+            joins=suggestion["joins"],
+            measures=suggestion["measures"],
+            attributes=suggestion["attributes"],
+            confidence=suggestion["confidence"],
+            status="pending",
+            freshness="current",
+            ddl=suggestion["ddl"],
+            reason=suggestion["reason"],
         )
+        # 全量重跑不覆盖人工采纳结论（与既有口径一致），仅沿用未过期建议的采纳状态
+        if previous is not None and previous.freshness == "current" and previous.status == "adopted":
+            entity.status = "adopted"
+            entity.adopted_by = previous.adopted_by
+            entity.adopted_at = previous.adopted_at
+        db.add(entity)
     db.flush()
 
 
@@ -113,6 +133,10 @@ def execute_run(db: Session, run: ModelRun) -> ModelRun:
             if source is not None:
                 source.field_count = len(profiles)
                 source.scanned_at = utcnow()
+                # 全量剖析以当前抽样行刷新结构快照（未发生过显式结构同步时保持版本不变）
+                source.structure_snapshot = [
+                    {"column": p["column"], "dtype": p["dtype"]} for p in profiles
+                ]
             profile_rows.extend({"table_id": table["id"], **profile} for profile in profiles)
 
         discovery = profiling_service.discover_relations(profile_rows)
@@ -122,7 +146,7 @@ def execute_run(db: Session, run: ModelRun) -> ModelRun:
         built = star_service.build_suggestions(
             table_dicts, profile_rows, discovery["relations"], rows_by_table
         )
-        _persist_suggestions(db, run.id, built["suggestions"])
+        _persist_suggestions(db, run.id, built["suggestions"], previous_run_id=_previous_run_id(db, run.id))
 
         classified = built["classified"]
         fact_count = sum(1 for item in classified if item["role"] == star_service.ROLE_FACT)

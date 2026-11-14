@@ -56,8 +56,8 @@ function renderSvg(data, groups, positions) {
       const from = byId.get(edge.left_table_id);
       const to = byId.get(edge.right_table_id);
       if (!from || !to) return '';
-      return `<path class="edge ${esc(edge.kind)}" data-edge="${edge.id}" data-from="${edge.left_table_id}" data-to="${edge.right_table_id}" d="${edgePath(from, to)}">
-        <title>${esc(edge.left_name)}.${esc(edge.left_column)} → ${esc(edge.right_name)}.${esc(edge.right_column)} · 包含度 ${(edge.containment * 100).toFixed(1)}%</title>
+      return `<path class="edge ${esc(edge.kind)}${edge.freshness === 'stale' ? ' stale' : ''}" data-edge="${edge.id}" data-from="${edge.left_table_id}" data-to="${edge.right_table_id}" d="${edgePath(from, to)}">
+        <title>${esc(edge.left_name)}.${esc(edge.left_column)} → ${esc(edge.right_name)}.${esc(edge.right_column)} · 包含度 ${(edge.containment * 100).toFixed(1)}%${edge.freshness === 'stale' ? ' · 依据已过期' : ''}</title>
       </path>`;
     })
     .join('');
@@ -151,7 +151,7 @@ export const relationsPage = {
         <div class="panel-head">
           <h2>关系图</h2>
           <div style="display:flex;gap:8px;align-items:center">
-            <span class="meta" data-testid="graph-edge-count">${data.edge_total} 条边 · ${groups.facts.length} 事实 / ${groups.primary.length} 主维 / ${groups.secondary.length} 二级维</span>
+            <span class="meta" data-testid="graph-edge-count">${data.edge_total} 条边${data.stale_edge_total ? ` · <span class="badge danger">${data.stale_edge_total} 条依据过期</span>` : ''} · ${groups.facts.length} 事实 / ${groups.primary.length} 主维 / ${groups.secondary.length} 二级维</span>
             ${can(ctx.user.role, 'export:read') ? '<button class="btn sm ghost" id="export-relations">导出关系 CSV</button>' : ''}
           </div>
         </div>
@@ -160,6 +160,7 @@ export const relationsPage = {
           <span><i class="fact"></i>事实表（铜色）</span>
           <span><i></i>主外键（包含度 100%）</span>
           <span><i class="fk"></i>弱外键候选</span>
+          <span><i class="stale-legend"></i>依据过期（结构同步待确认）</span>
           <span class="muted">点击节点高亮它的边；8 张无主键流水表未入图</span>
         </div>
       </section>
@@ -179,6 +180,13 @@ export const relationsPage = {
             { key: 'kind_label', label: '类型', render: (row) => `<span class="badge ${row.kind === 'pk-fk' ? 'fact' : 'warn'}">${esc(row.kind_label)}</span>` },
             { key: 'containment', label: '包含度', className: 'num', render: (row) => fmtRatio(row.containment) },
             { key: 'confidence', label: '置信度', render: (row) => confidenceBar(row.confidence) },
+            {
+              key: 'freshness',
+              label: '依据',
+              render: (row) => (row.freshness === 'stale'
+                ? '<span class="badge danger">依据过期</span>'
+                : '<span class="badge ok">依据有效</span>'),
+            },
             { key: 'sample_size', label: '抽样', className: 'num' },
           ],
         })}</div>

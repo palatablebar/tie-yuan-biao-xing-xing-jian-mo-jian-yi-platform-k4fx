@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.constants.enums import (
+    SUGGESTION_FRESHNESS_LABELS,
     SUGGESTION_ROLE_LABELS,
     SUGGESTION_STATUS_LABELS,
 )
@@ -33,6 +34,12 @@ def serialize(suggestion: ModelSuggestion, table: SourceTable | None = None, run
         "confidence": suggestion.confidence,
         "status": suggestion.status,
         "status_label": SUGGESTION_STATUS_LABELS.get(suggestion.status, suggestion.status),
+        "freshness": suggestion.freshness,
+        "freshness_label": SUGGESTION_FRESHNESS_LABELS.get(suggestion.freshness, suggestion.freshness),
+        "stale_reason": suggestion.stale_reason,
+        "structure_sync_id": suggestion.structure_sync_id,
+        "superseded_by_id": suggestion.superseded_by_id,
+        "exportable": suggestion.freshness == "current",
         "ddl": suggestion.ddl,
         "reason": suggestion.reason,
         "adopted_by": suggestion.adopted_by,
@@ -106,6 +113,12 @@ def detail(db: Session, suggestion_id: int) -> dict:
 
 
 def adopt(db: Session, suggestion: ModelSuggestion, actor_email: str) -> ModelSuggestion:
+    if suggestion.freshness == "stale":
+        raise AppError(
+            "CONFLICT",
+            409,
+            {"reason": "该建议依据的贴源字段已变化，导出资格已失效；请在结构同步确认重建后重新采纳"},
+        )
     if suggestion.status == "dismissed":
         raise AppError("CONFLICT", 409, {"reason": "已驳回的建议不能直接采纳"})
     suggestion.status = "adopted"

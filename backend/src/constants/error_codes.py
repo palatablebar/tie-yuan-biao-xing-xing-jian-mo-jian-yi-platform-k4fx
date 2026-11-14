@@ -7,6 +7,8 @@ ERROR_ACTIONS: dict[str, str] = {
     "NOT_FOUND": "回列表并提示资源已删除",
     "VALIDATION": "高亮非法字段",
     "CONFLICT": "提示刷新后重试",
+    "SYNC_FAILED": "提示同步失败并保留旧结构，引导修正后重试",
+    "EXPORT_STALE": "提示依据过期，引导到结构同步确认重建",
     "RATE_LIMITED": "提示稍后重试并禁用提交按钮 3 秒",
     "INTERNAL": "展示可重试错误态",
 }

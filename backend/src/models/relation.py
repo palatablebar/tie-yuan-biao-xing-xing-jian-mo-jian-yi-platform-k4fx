@@ -25,4 +25,9 @@ class Relation(Base):
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     kind: Mapped[str] = mapped_column(String(12), default="pk-fk", index=True)
     sample_size: Mapped[int] = mapped_column(Integer, default=0)
+    # 依据列被结构同步改动后置 stale，重建时由新关系取代
+    freshness: Mapped[str] = mapped_column(String(8), default="current", index=True)
+    structure_sync_id: Mapped[int | None] = mapped_column(
+        ForeignKey("structure_syncs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

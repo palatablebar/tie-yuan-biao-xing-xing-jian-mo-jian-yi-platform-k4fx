@@ -794,6 +794,12 @@ table.data td.num {
   stroke: var(--warn);
 }
 
+.graph-board .edge.stale {
+  stroke: var(--danger);
+  stroke-dasharray: 2 3;
+  opacity: 0.85;
+}
+
 .graph-board .edge.faded {
   opacity: 0.1;
 }
@@ -837,6 +843,10 @@ table.data td.num {
 .graph-legend i.fk {
   border-top-style: dashed;
   border-top-color: var(--warn);
+}
+
+.graph-legend i.stale-legend {
+  border-top: 1px dashed var(--danger);
 }
 
 .graph-legend i.fact {
@@ -1149,4 +1159,34 @@ pre.code {
   .bar-row {
     grid-template-columns: 62px 1fr 32px;
   }
+}
+
+/* ---------- 结构同步：字段编辑器 ---------- */
+.sync-col-row {
+  display: grid;
+  grid-template-columns: 1fr 140px auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.sync-col-row input,
+.sync-col-row select {
+  width: 100%;
+}
+
+#col-editor-wrap .btn.sm {
+  white-space: nowrap;
+}
+
+.badge.stale {
+  border-color: var(--danger);
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+.badge.current {
+  border-color: var(--ok);
+  background: var(--ok-wash);
+  color: var(--ok);
 }

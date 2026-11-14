@@ -21,7 +21,8 @@ export const NAV = [
   { to: '#/tables', no: '01', label: '贴源表与剖析', permission: 'table:read' },
   { to: '#/relations', no: '02', label: '关系图', permission: 'relation:read' },
   { to: '#/suggestions', no: '03', label: '建模建议', permission: 'suggestion:read' },
-  { to: '#/audit', no: '04', label: '审计日志', permission: 'audit:read' },
+  { to: '#/sync', no: '04', label: '结构同步', permission: 'sync:read' },
+  { to: '#/audit', no: '05', label: '审计日志', permission: 'audit:read' },
 ];
 
 export const ROLE_LABELS = {
@@ -34,13 +35,13 @@ export const PERMISSIONS = {
   admin: [
     'overview:read', 'table:read', 'table:write', 'profile:read', 'relation:read',
     'run:read', 'run:create', 'suggestion:read', 'suggestion:adopt', 'suggestion:review',
-    'export:read', 'audit:read',
+    'sync:read', 'sync:write', 'export:read', 'audit:read',
   ],
   analyst: [
     'overview:read', 'table:read', 'profile:read', 'relation:read',
-    'run:read', 'run:create', 'suggestion:read', 'suggestion:review', 'export:read',
+    'run:read', 'run:create', 'suggestion:read', 'suggestion:review', 'sync:read', 'export:read',
   ],
-  viewer: ['overview:read', 'table:read', 'profile:read', 'relation:read', 'run:read', 'suggestion:read'],
+  viewer: ['overview:read', 'table:read', 'profile:read', 'relation:read', 'run:read', 'suggestion:read', 'sync:read'],
 };
 
 export const ENUMS = {
@@ -60,7 +61,10 @@ export const ENUMS = {
   suggestionRole: { fact: '事实表', dim: '维度表' },
   suggestionStatus: { pending: '待采纳', adopted: '已采纳', dismissed: '已驳回' },
   runStatus: { queued: '排队中', running: '剖析中', success: '成功', partial: '部分成功', failed: '失败' },
-  trigger: { manual: '手动', schedule: '定时', seed: '初始化' },
+  trigger: { manual: '手动', schedule: '定时', seed: '初始化', sync: '结构同步' },
+  changeKind: { added: '新增', removed: '删除', renamed: '改名', type_changed: '类型变更' },
+  syncStatus: { success: '已同步·待确认', failed: '同步失败', rebuilt: '已重建' },
+  freshness: { current: '依据有效', stale: '依据过期' },
 };
 
 export function can(role, permission) {
@@ -77,4 +81,16 @@ export function statusTone(status) {
 
 export function runTone(status) {
   return { success: 'ok', partial: 'warn', failed: 'danger', running: 'info' }[status] || 'info';
+}
+
+export function freshnessTone(freshness) {
+  return freshness === 'stale' ? 'danger' : 'ok';
+}
+
+export function syncTone(status) {
+  return { success: 'warn', failed: 'danger', rebuilt: 'ok' }[status] || 'info';
+}
+
+export function changeTone(kind) {
+  return { added: 'ok', removed: 'danger', renamed: 'warn', type_changed: 'warn' }[kind] || 'info';
 }

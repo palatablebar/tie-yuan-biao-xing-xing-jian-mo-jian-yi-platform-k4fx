@@ -44,10 +44,21 @@ export const overviewPage = {
       </div>
       ${statStrip([
         { label: '贴源表', value: data.tables_total, hint: `${data.profiles_total} 个字段完成剖析` },
-        { label: '关系边', value: data.relations_total, hint: '同名键 + 包含度 ≥ 0.98' },
+        { label: '关系边', value: data.relations_total, hint: data.stale_relation_total ? `${data.stale_relation_total} 条依据过期` : '同名键 + 包含度 ≥ 0.98' },
         { label: '建模建议', value: data.suggestions_total, hint: `${data.pending_total} 条待采纳 · ${data.adopted_total} 条已采纳` },
         { label: 'worker', value: data.worker_alive ? '在岗' : '离线', hint: latest ? `最近剖析 ${latest.run_no}` : '尚无运行' },
       ])}
+      ${data.stale_suggestion_total || data.pending_sync_total ? `
+      <section class="panel" style="border-color:var(--danger)">
+        <div class="panel-head"><h2>结构同步待处理</h2><a class="btn sm accent" href="#/sync">打开结构同步</a></div>
+        <div class="panel-body">
+          <dl class="kv">
+            <dt>待确认同步</dt><dd class="mono">${esc(data.pending_sync_total ?? 0)} 次（成功同步等待管理员确认重建）</dd>
+            <dt>依据过期建议</dt><dd><span class="badge danger">${esc(data.stale_suggestion_total ?? 0)} 条导出资格已锁定</span></dd>
+            ${data.failed_sync_total ? `<dt>同步失败</dt><dd><span class="badge danger">${esc(data.failed_sync_total)} 次（旧版结构已保留）</span></dd>` : ''}
+          </dl>
+        </div>
+      </section>` : ''}
       <div class="grid-3">
         <section class="panel">
           <div class="panel-head"><h2>关系类型</h2><span class="meta">containment</span></div>
